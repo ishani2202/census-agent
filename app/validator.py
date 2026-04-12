@@ -69,6 +69,13 @@ def validate_sql(sql: str) -> dict:
     Main entry point. Runs all checks in order.
     Returns {"valid": bool, "sql": str, "error": str or None}
     """
+    # Check 0: Reject empty SQL
+    if not sql or not sql.strip():
+        return {
+            "valid": False,
+            "sql": sql,
+            "error": "empty SQL — generation failed"
+        }
     # Check 1: Safety first
     safety = check_safety(sql)
     if not safety["safe"]:

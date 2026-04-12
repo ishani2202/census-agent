@@ -83,4 +83,5 @@ Write the Snowflake SQL query. Return raw SQL only — no markdown, no backticks
         return sql
 
     except Exception as e:
-        return f"-- SQL generation error: {str(e)}"
+        print(f"[sql_generator] error: {str(e)}")
+        return ""  # empty string, not a SQL comment

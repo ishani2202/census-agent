@@ -62,6 +62,14 @@ def run(question: str, history: list = []) -> dict:
     # Step 4: Generate SQL
     sql = generate_sql(question, plan, metadata)
 
+    # Guard against SQL generation failure
+    if not sql or sql.strip() == "":
+        return {
+            "answer": "I had trouble generating the query. Could you try rephrasing?",
+            "sql": None, "plan": plan, "blocked": False,
+            "error": "sql generation failed"
+        }
+
     # Step 5: Validate + retry once with error context
     for attempt in range(MAX_RETRIES + 1):
         validation = validate_sql(sql)
