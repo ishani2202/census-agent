@@ -41,7 +41,7 @@ I prototyped and rejected two approaches based on test results before arriving a
 
 Full schema injection: injecting all 8,120 columns into a single prompt exceeds reliable attention span and produces hallucinated column names on complex queries. Beyond that, building a correct semantic model for 243 tables with proper hierarchy, universe annotations, and weight column relationships in 24 hours wasn't realistic: correctness would have been assumed, not verified. Rejected without prototyping.
 
-Semantic embedding search: I built an embedding index over all table titles and tested it against real queries. "Poverty" returned B29003 (citizenship by poverty status) instead of B17017 (poverty status of individuals). The Census uses its own terminology that doesn't map to how people ask questions. Fuzzy LIKE search had the same problem. Rejected after testing — the vocabulary mismatch is structural, not fixable by better embeddings.
+Semantic embedding search: I built an embedding index over all table titles and tested it against real queries. "Poverty" returned B29003 (citizenship by poverty status) instead of B17017 (poverty status of individuals). The Census uses its own terminology that doesn't map to how people ask questions. Fuzzy LIKE search had the same problem. Rejected after testing: the vocabulary mismatch is structural, not fixable by better embeddings.
 
 **Two-step table selection + targeted column lookup** is what I built. Step 1: the LLM sees all 243 table titles at ~5,000 tokens — small enough for reliable attention — and picks relevant tables. Step 2: Snowflake metadata is queried for only those tables' columns (~50 focused rows), and the LLM picks exact columns from that focused context. Nothing is hardcoded except the 243 table titles.
 
@@ -88,7 +88,7 @@ I use `gpt-4.1` where the task requires genuine reasoning over structured data, 
 
 ### Comprehensive mapping and context awareness
 
-The two-step metadata lookup resolves this directly. The table selector receives the complete 243-table registry at every query — no table is excluded, no topic is pre-filtered. The column lookup then queries Snowflake's own metadata table dynamically for the selected tables, returning the exact column IDs, field levels, and descriptions that exist in the actual database at query time. Nothing is hardcoded beyond the table titles.
+The two-step metadata lookup resolves this directly. The table selector receives the complete 243-table registry at every query: no table is excluded, no topic is pre-filtered. The column lookup then queries Snowflake's own metadata table dynamically for the selected tables, returning the exact column IDs, field levels, and descriptions that exist in the actual database at query time. Nothing is hardcoded beyond the table titles.
 
 This means the agent can answer questions about any of the 8,120 columns in the dataset without any of them being explicitly listed in a prompt.
 
