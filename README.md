@@ -4,8 +4,10 @@ A production-quality chat agent that answers natural language questions about th
 
 **Live demo:** `[https://census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app/]`  
 **Login:** 
-username: snowflake
-password: census2024
+
+***username:*** snowflake
+
+***password:*** census2024
 
 ---
 
@@ -61,25 +63,6 @@ User question
 | Snowflake errors | Specific message per error type |
 | Empty results | Explains why data isn't available at that granularity |
 
----
-
-## Key data decisions
-
-These aren't obvious from the schema and each one corresponds to a real bug or wrong answer if ignored.
-
-**Weighted median aggregation.** You cannot average block-group medians to produce a county or state median — the math doesn't work. The correct approach is `SUM(median * weight) / NULLIF(SUM(weight), 0)`. Weight column varies by metric: total households for income, renter-occupied units for gross rent, owner-occupied units for home value. Always disclosed to the user as a "population-weighted approximation."
-
-**NULL means suppressed, not unknown.** NULLs in this dataset mean the block group had too few respondents for the Census Bureau to report reliably — small cell suppression for privacy protection. The `IS NOT NULL` filters are correct, but the reason matters: we're respecting Census disclosure avoidance methodology, not filtering bad data.
-
-**Zero and NULL are different.** Zero means a block group genuinely had none of something. NULL means it was suppressed. The `> 0` filter belongs on weight columns only — applying it to count fields silently undercounts areas that legitimately have zero of a characteristic.
-
-**Universe mismatches.** B19013 counts households, B01001 counts people, B25003 counts occupied housing units. Cross-table derived metrics need to account for this or the denominator is wrong.
-
-**The e/m distinction.** Every ACS field has an estimate (`e` suffix) and a margin of error (`m` suffix). MOE columns are statistical uncertainty ranges, not demographic values. The metadata filter excludes all `m` columns — if that filter breaks, the agent silently treats confidence intervals as data.
-
-**ACS 5-year window.** "2019 data" means responses collected 2015–2019. Year-over-year comparisons between 2019 and 2020 are overlapping windows, not discrete years.
-
-**City-level queries are unanswerable.** City boundaries don't align with Census Block Group boundaries. A question about Austin, TX cannot be answered because Austin's city limits cut across hundreds of CBGs that also include non-Austin areas. Caught at the planning step and returned as a helpful explanation.
 
 ---
 
