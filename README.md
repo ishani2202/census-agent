@@ -10,13 +10,15 @@ A production-quality chat agent that answers natural language questions about th
 
 ***password:*** census2024
 
+A detailed writeup of architecture decisions, tradeoffs, and testing approach is in [`reflection.md`](./reflection.md)
+
 ---
 
 ## The core problem
 
-The Census dataset has 8,120 columns with names like `B19013e1` and `B27010e17`. They're completely opaque without the metadata table, and the terminology the Census uses doesn't map cleanly to how people ask questions. "Poverty" in natural language maps to B17001 — but a semantic search returns B29003 (citizenship by poverty status) instead. Embeddings don't fix this. Keyword search doesn't fix this.
+The Census dataset has 8,120 columns with names like `B19013e1` and `B27010e17`. They're completely opaque without the metadata table, and the terminology the Census uses doesn't map cleanly to how people ask questions. "Poverty" in natural language maps to B17001: but a semantic search returns B29003 (citizenship by poverty status) instead. Embeddings don't fix this. Keyword search doesn't fix this.
 
-The only approach that worked: show a capable LLM the complete 243-table catalog at low resolution, let it reason about which tables are relevant, then fetch exact columns dynamically from Snowflake metadata for only those tables. This keeps the context window focused and accurate without hardcoding anything.
+The best approach: show a capable LLM the complete 243-table catalog at low resolution, let it reason about which tables are relevant, then fetch exact columns dynamically from Snowflake metadata for only those tables. This keeps the context window focused and accurate without hardcoding anything.
 
 ---
 
@@ -50,7 +52,7 @@ User question
 
 **Dedicated planning step.** Most text-to-SQL agents go directly from question to SQL. Inserting a structured JSON planning step first gives three things: fast-fail for unanswerable queries before any expensive operations (~800ms instead of ~15s), deterministic state normalization ("California" → "CA" via a Python dictionary, not an LLM), and an inspectable artifact for every query that made debugging dramatically faster.
 
-**Model routing.** `gpt-4.1` for steps requiring genuine reasoning over structured data — table selection, column selection, SQL generation. `gpt-4.1-mini` for well-defined, constrained tasks — guardrail classification, planning, synthesis. GPT-4.1 is optimized for instruction-following and stays within constraints on structured outputs without editorializing. Approximate cost: ~$0.005 per query blended. At 1,000 queries/day that's ~$150/month. The mini routing reduces cost ~40% with no measurable impact on answer quality.
+**Model routing.** GPT-4.1 is purpose-built for precise instruction-following and structured outputs: exactly what we need when the task is generating SQL that has to be exactly right, not approximately right. `gpt-4.1-mini` handles the simpler, well-defined steps (guardrail classification, planning, synthesis) at roughly 40% lower cost with no measurable quality difference.
 
 **Graceful degradation on every path.** Every step has an explicit failure path that produces a helpful message:
 
@@ -75,15 +77,13 @@ Four layers, each catching different failure modes.
 
 **Integration tests:** Hit the live Snowflake database with real queries and assert real answers. The most important — `test_california_income_query` — asserts the weighted median income for California lands between $80,000 and $90,000. One test that simultaneously catches connection failures, schema changes, and formula regressions.
 
-**Behavioral evals :** LLM outputs aren't deterministic — testing for exact answers produces flaky results. These test what the agent *does*, not what it *says*. Coverage: core demographic queries, national aggregations, county level, US territories (Puerto Rico, DC), edge cases (Loving County TX with ~98 people, ambiguous county names), guardrail probes (prompt injection, nonsense input, financial advice requests), year handling, multi-turn follow-ups, cross-state ranking, and all graceful degradation paths.
+**Behavioral evals :** LLM outputs aren't deterministic: testing for exact answers produces flaky results. These test what the agent *does*, not what it *says*. Coverage: core demographic queries, national aggregations, county level, US territories (Puerto Rico, DC), edge cases (Loving County TX with ~98 people, ambiguous county names), guardrail probes (prompt injection, nonsense input, financial advice requests), year handling, multi-turn follow-ups, cross-state ranking, and all graceful degradation paths.
 
 **Grounding check :** The most important layer, and the one most agents skip. An agent can pass every behavioral eval while still pulling numbers from training memory rather than actual query results — and you'd never catch it without this. For each question, the primary number in the synthesized answer is compared against the raw SQL execution result from Snowflake directly, within 5% tolerance. It tests synthesizer grounding specifically, not SQL correctness.
 
 Results across 15 diverse queries: US population answer said "328 million" against a SQL result of 328,016,242 (0.005% off). Health insurance coverage said "91.2%" against SQL result of 91.19% (0.01% off). California 2020 income said "$87,168" against SQL result of $87,168.19 (essentially exact). The synthesizer never once used a number from training memory.
 
 **Current scores:** 21/22 unit tests, 9/9 integration tests, 30/32 behavioral evals (94%), 15/15 grounding check (100%).
-
-The 94% behavioral eval figure understates actual reliability. Both failures were transient OpenAI API errors during the eval run — not logic failures. On verified runs the logic failure rate is 0/30. They do expose a real production gap: LLM calls need retry logic with exponential backoff rather than relying solely on fail-open behavior.
 
 ---
 
