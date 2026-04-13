@@ -3,7 +3,9 @@
 A production-quality chat agent that answers natural language questions about the US population using the ACS 2019 5-year estimates from the Snowflake Marketplace. Built in 24 hours.
 
 **Live demo:** `[https://census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app/]`  
-**Login:** `[credentials if applicable]`
+**Login:** 
+username: snowflake
+password: census2024
 
 ---
 
@@ -85,13 +87,13 @@ These aren't obvious from the schema and each one corresponds to a real bug or w
 
 Four layers, each catching different failure modes.
 
-**Unit tests (22 tests, ~0.4s):** The fastest feedback loop — run in under half a second, cost nothing. Cover everything deterministic: SQL safety checker, syntax parser, LIMIT injection, empty SQL rejection, state normalization. If any of these break, the pipeline fails on every query regardless of LLM performance.
+**Unit tests:** The fastest feedback loop — run in under half a second, cost nothing. Cover everything deterministic: SQL safety checker, syntax parser, LIMIT injection, empty SQL rejection, state normalization. If any of these break, the pipeline fails on every query regardless of LLM performance.
 
-**Integration tests (9 tests, ~16s):** Hit the live Snowflake database with real queries and assert real answers. The most important — `test_california_income_query` — asserts the weighted median income for California lands between $80,000 and $90,000. One test that simultaneously catches connection failures, schema changes, and formula regressions.
+**Integration tests:** Hit the live Snowflake database with real queries and assert real answers. The most important — `test_california_income_query` — asserts the weighted median income for California lands between $80,000 and $90,000. One test that simultaneously catches connection failures, schema changes, and formula regressions.
 
-**Behavioral evals (32 cases, ~8 mins):** LLM outputs aren't deterministic — testing for exact answers produces flaky results. These test what the agent *does*, not what it *says*. Coverage: core demographic queries, national aggregations, county level, US territories (Puerto Rico, DC), edge cases (Loving County TX with ~98 people, ambiguous county names), guardrail probes (prompt injection, nonsense input, financial advice requests), year handling, multi-turn follow-ups, cross-state ranking, and all graceful degradation paths.
+**Behavioral evals :** LLM outputs aren't deterministic — testing for exact answers produces flaky results. These test what the agent *does*, not what it *says*. Coverage: core demographic queries, national aggregations, county level, US territories (Puerto Rico, DC), edge cases (Loving County TX with ~98 people, ambiguous county names), guardrail probes (prompt injection, nonsense input, financial advice requests), year handling, multi-turn follow-ups, cross-state ranking, and all graceful degradation paths.
 
-**Grounding check (15 cases, ~5 mins):** The most important layer, and the one most agents skip. An agent can pass every behavioral eval while still pulling numbers from training memory rather than actual query results — and you'd never catch it without this. For each question, the primary number in the synthesized answer is compared against the raw SQL execution result from Snowflake directly, within 5% tolerance. It tests synthesizer grounding specifically, not SQL correctness.
+**Grounding check :** The most important layer, and the one most agents skip. An agent can pass every behavioral eval while still pulling numbers from training memory rather than actual query results — and you'd never catch it without this. For each question, the primary number in the synthesized answer is compared against the raw SQL execution result from Snowflake directly, within 5% tolerance. It tests synthesizer grounding specifically, not SQL correctness.
 
 Results across 15 diverse queries: US population answer said "328 million" against a SQL result of 328,016,242 (0.005% off). Health insurance coverage said "91.2%" against SQL result of 91.19% (0.01% off). California 2020 income said "$87,168" against SQL result of $87,168.19 (essentially exact). The synthesizer never once used a number from training memory.
 
@@ -101,15 +103,7 @@ The 94% behavioral eval figure understates actual reliability. Both failures wer
 
 ---
 
-## Known limitations
 
-**B16004 double-counting.** For "Spanish speakers in California" the agent returns ~57%; the correct answer is ~29%. Root cause: the metadata format doesn't expose hierarchy depth beyond FIELD_LEVEL_6, so parent totals and their breakdowns look identical to the column selector — and it selects both. Fix requires fetching deeper field levels and adding explicit hierarchy logic. Not implemented because a partial fix risked regressions in simpler tables.
-
-**Ambiguous county without state.** "Washington County" matches 31 states. The agent returns data for the first match rather than asking for clarification. Fix: detect multi-state matches at the planning step and prompt for disambiguation.
-
-**Complex multi-table queries near token ceiling.** The column selector runs at `max_tokens=1200` — sufficient for all tested cases. A query genuinely requiring 40+ columns across 6+ tables starts hitting that ceiling. The real fix isn't raising the limit — it's better upstream structure: a pre-computed hierarchy map that documents parent-child relationships and aggregation types explicitly, combined with Snowflake-side topic filtering so the column selector only receives columns relevant to the query. Both would keep the context window focused regardless of query complexity.
-
----
 
 ## What I'd do with more time
 
