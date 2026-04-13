@@ -1,6 +1,6 @@
 # US Census Chat Agent
 
-A production-quality chat agent that answers natural language questions about the US population using the ACS 2019 5-year estimates from the Snowflake Marketplace. Built in 24 hours.
+A production-quality chat agent that answers natural language questions about the US population using the ACS 2019 5-year estimates from the Snowflake Marketplace. 
 
 **Live demo:** [census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app](https://census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app/)  
 
