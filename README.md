@@ -2,10 +2,11 @@
 
 A production-quality chat agent that answers natural language questions about the US population using the ACS 2019 5-year estimates from the Snowflake Marketplace. Built in 24 hours.
 
-**Live demo:** `[https://census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app/]`  
+**Live demo:** [census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app](https://census-agent-jirdy3dtrgqrxrshpjfshy.streamlit.app/)  
+
 **Login:** 
 
-***username:*** snowflake
+***username:*** snowflake  
 
 ***password:*** census2024
 
