@@ -21,17 +21,18 @@ A few specific examples out of many I verified before writing any code:
 
 **Universe mismatches.** Different tables count different things. B19013 counts households, B01001 counts people, B25003 counts occupied housing units. A block group having 400 households and 1,200 people isn't a data error — those are just different universes. Cross-table derived metrics (like income per capita) need to account for this or the denominator is wrong.
 
-**Derived fields don't exist** everything is computed at query time. The dataset contains only raw estimates. There are no pre-computed percentages, rates, or ratios anywhere in the schema. "Percent renter-occupied" is not a column — you compute it as B25003e3 / B25003e1. An agent that searches for a field named something like "renter_rate" or "poverty_percent" will find nothing and either fail or hallucinate a column name.
+**Derived fields don't exist** everything is computed at query time. The dataset contains only raw estimates. There are no pre-computed percentages, rates, or ratios anywhere in the schema. "Percent renter-occupied" is not a column: you compute it as B25003e3 / B25003e1. An agent that searches for a field named something like "renter_rate" or "poverty_percent" will find nothing and either fail or hallucinate a column name.
 
 **Field codes are not human-readable** and the agent cannot guess them. There is no pattern that lets us derive "B19013 = median household income" from first principles. The mapping has to come from metadata. An agent without access to field labels will either hallucinate table codes or query the wrong thing entirely. 
 
 **e/m column distinction.** Every ACS field comes in two versions: estimate (`e` suffix) and margin of error (`m` suffix). MOE columns are statistical uncertainty ranges, not demographic values. The metadata filter excludes all `m` columns — if that filter ever breaks, the agent would silently treat confidence intervals as data.
 
-**Weighted median aggregation.** You can't average block-group medians to get a county or state median — the math doesn't work. Instead: `SUM(median * weight) / NULLIF(SUM(weight), 0)`. This is a population-weighted mean of medians, which is an approximation but the best one available from this data structure. Weight column varies by metric: total households for income, renter-occupied units for gross rent, owner-occupied units for home value. Always disclose this as a "population-weighted approximation."
+**Weighted median aggregation.** You can't average block-group medians to get a county or state median: the math doesn't work. Instead: `SUM(median * weight) / NULLIF(SUM(weight), 0)`. This is a population-weighted mean of medians, which is an approximation but the best one available from this data structure. Weight column varies by metric: total households for income, renter-occupied units for gross rent, owner-occupied units for home value. Always disclose this as a "population-weighted approximation."
 
 **ACS 5-year window.** "2019 data" means responses collected 2015–2019, not a 2019 snapshot. Year-over-year comparisons between 2019 and 2020 are comparing overlapping windows (2015–2019 vs 2016–2020), not discrete years. Smaller geographies tend to be more reliable because more pooled responses reduce the standard error.
 
-**B vs C tables.** C-tables (e.g. `C19001`) are simplified versions of B-tables that collapse race/ethnicity categories to improve reliability for small geographies. They're not separate concepts — don't treat them as additional variables if your metadata includes both.
+**B vs C tables** C-tables (e.g. `C19001`) are simplified versions of B-tables that collapse race/ethnicity categories to improve reliability for small geographies. They're not separate concepts — don't treat them as additional variables if your metadata includes both.
+
 ---
 
 ### Phase 2: Architecture Design
@@ -148,7 +149,7 @@ Four layers, each catching different failure modes:
 
 **Integration tests (9 tests, ~16s):** Snowflake connectivity and known-answer queries. `test_california_income_query` asserts the weighted median result is between $80,000 and $90,000 — catches both connection failures and regression in the formula simultaneously.
 
-**Behavioral evals (32 cases, ~8 mins):** Agent behavior, not exact answers. LLM outputs vary slightly between runs — behavioral properties are stable. Does "What about Texas?" after a California question resolve correctly? Does a query about Loving County, TX — population ~98 — return a real answer instead of crashing? The 32 cases were chosen to cover the full surface area: happy path queries, US territories, ambiguous geographies, out-of-scope requests, multi-turn follow-ups, and known edge cases.
+**Behavioral evals (32 cases, ~8 mins):** Agent behavior, not exact answers. LLM outputs vary slightly between runs — behavioral properties are stable. Does "What about Texas?" after a California question resolve correctly? Does a query about Loving County, TX — population ~98 : return a real answer instead of crashing? The 32 cases were chosen to cover the full surface area: happy path queries, US territories, ambiguous geographies, out-of-scope requests, multi-turn follow-ups, and known edge cases.
 
 **Grounding check (15 cases, ~5 mins):** For each question, the agent runs, the generated SQL is executed directly against Snowflake, and the primary number in the answer is compared against the primary number in the SQL result within 5% tolerance. This tests whether the synthesizer used actual query data, not whether the SQL is correct. An agent that passes behavioral evals can still fill gaps from training memory. The grounding check catches that specifically.
 
@@ -191,7 +192,7 @@ The grounding check result is the most meaningful signal in the test suite. Acro
 
 **Tiny county** — Loving County TX (~98 people). FIPS join works correctly. Verified.
 
-**SQL generation failure** — Returns empty string on API error, caught before validation, clean message to user.
+**SQL generation failure**  Returns empty string on API error, caught before validation, clean message to user.
 
 ### Identified but not fully addressed
 
@@ -203,8 +204,6 @@ The grounding check result is the most meaningful signal in the test suite. Acro
 
 **LIMIT constant inconsistency.** The SQL generator prompt instructs `LIMIT 10000` for non-aggregated queries while the validator injects `LIMIT 1000` if no LIMIT clause exists. In practice the SQL generator always adds a LIMIT so the validator injection rarely fires, but the constants are inconsistent. Production would consolidate to a single configurable constant.
 
-**Synthesizer temperature.** The synthesizer runs at `temperature=0.3` rather than 0. This is a deliberate choice — slight variation produces more natural language responses — but means synthesis is non-deterministic. Two runs of the same query may phrase the answer slightly differently. For a data agent where grounding matters more than variety, `temperature=0` would be more consistent.
-
 **Table selector year instruction for comparisons.** The table selector prompt says "use the year from the query plan" but comparison queries produce `year: "2019-2020"` which doesn't map to a real physical table. This is handled correctly in `metadata.py` which normalizes to 2019 for metadata lookup, but the prompt and actual behavior are slightly inconsistent.
 
 
@@ -212,17 +211,7 @@ The grounding check result is the most meaningful signal in the test suite. Acro
 
 ## On Using AI Coding Tools
 
-I used Claude throughout — architecture discussion, code generation, debugging, and data exploration.
-
-Three moments worth mentioning for the follow-up review:
-
-When Claude suggested embedding-based metadata lookup, I prototyped it, tested it against real queries, watched it return the wrong tables consistently, and rejected it. The decision was based on test results.
-
-When Claude proposed a "table structure summarizer" as an extra LLM step to fix B27010 column selection, I first tested whether upgrading to `gpt-4.1` solved the problem without adding complexity. It did. I didn't add the extra step.
-
-When Claude suggested increasing `max_tokens` from 800 to 1200 to fix B16004 truncation, I pushed back on cost at scale. We worked through the math — at realistic query volumes the difference is negligible — and I made the change. But understanding the cost before accepting the fix mattered.
-
-The pattern throughout: Claude made suggestions, I tested them, I decided. The value was in moving faster through well-understood territory so I could spend more time on the decisions that required judgment.
+I used Claude throughout: architecture discussion, code generation, debugging, and data exploration.
 
 ---
 
@@ -230,6 +219,6 @@ The pattern throughout: Claude made suggestions, I tested them, I decided. The v
 
 The core insight of this submission is that the vocabulary mismatch problem between natural language and Census terminology can't be solved by keyword search, semantic embeddings, or full schema injection. It requires showing a capable LLM the complete table catalog at low resolution, letting it reason about relevance, then fetching exact columns dynamically from Snowflake metadata. This approach emerged from testing alternatives against real queries, not from reasoning about it in the abstract.
 
-The hardest problem wasn't architecture — it was the data. Census column structures are genuinely complex: opaque names, case-sensitive quoting, hierarchical organization, block-group medians that can't be averaged, NULL values that mean suppressed not unknown, ACS 5-year windows that overlap between years. Time spent understanding these specifics before writing code translated directly into correct answers and avoided real bugs.
+The hardest problem wasn't architecture, it was the data. Census column structures are genuinely complex: opaque names, case-sensitive quoting, hierarchical organization, block-group medians that can't be averaged, NULL values that mean suppressed not unknown, ACS 5-year windows that overlap between years. Time spent understanding these specifics before writing code translated directly into correct answers and avoided real bugs.
 
 The honest limitations are documented specifically and have clear production solutions. The agent handles the core use case correctly, degrades gracefully on known edge cases, and is built on verified data knowledge rather than assumptions.
