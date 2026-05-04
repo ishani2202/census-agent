@@ -10,7 +10,6 @@ A production-quality chat agent that answers natural language questions about th
 
 ***password:*** census2024
 
-A detailed writeup of architecture decisions, tradeoffs, and testing approach is in [`reflection.md`](./reflection.md)
 
 ---
 
