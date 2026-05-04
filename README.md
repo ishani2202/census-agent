@@ -78,21 +78,8 @@ Results across 15 diverse queries: US population answer said "328 million" again
 
 **Current scores:** 21/22 unit tests, 9/9 integration tests, 30/32 behavioral evals (94%), 15/15 grounding check (100%).
 
----
 
 
-
-## What I'd do with more time
-
-**Snowflake Cortex Analyst semantic model.** The highest-impact improvement. Replaces the metadata lookup pipeline with native text-to-SQL inside Snowflake and fixes vocabulary mismatch at the root. Building a correct semantic model for 243 tables in 24 hours wasn't realistic — correctness would have been assumed, not verified. With more time this is the right direction.
-
-**Pre-computed hierarchy map.** Build a structured JSON schema map once from a Snowflake query over all 8,120 columns that explicitly documents every column's parent-child relationships, universe, aggregation type, and weight column. This would fix the B16004 double-counting bug and make the column selector dramatically more reliable on complex tables.
-
-**Query decomposition.** Complex multi-part questions currently get attempted in a single SQL query and sometimes fail. The right approach is decomposing them into multiple queries and synthesizing the results.
-
-**Prompt versioning.** Prompts are strings in `prompts.py`. Any change is silent — there's no way to correlate a prompt edit with a quality regression. Production needs versioning and rollback.
-
-**Retry logic with backoff.** The two behavioral eval failures caused by API errors would be caught by exponential backoff on LLM calls. Currently the pipeline relies on fail-open behavior for error recovery, which is insufficient for production.
 
 ---
 
